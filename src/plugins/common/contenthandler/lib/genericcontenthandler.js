@@ -37,90 +37,69 @@ define([
 ) {
 	'use strict';
 
-	/**
-	 * Checks whether the markup describes a paragraph that is propped by
-	 * a <br> tag but is otherwise empty.
-	 * 
-	 * Will return true for:
-	 *
-	 * <p id="foo"><br class="bar" /></p>
-	 *
-	 * as well as:
-	 *
-	 * <p><br></p>
-	 *
-	 * @param {string} html Markup
-	 * @return {boolean} True if html describes a propped paragraph.
-	 */
-	function isProppedParagraph(html) {
-		var trimmed = $.trim(html);
-		if (!trimmed) {
-			return false;
-		}
-		var node = $('<div>' + trimmed + '</div>')[0];
-		var containsSingleP = node.firstChild === node.lastChild
-		    && 'p' === node.firstChild.nodeName.toLowerCase();
-		if (containsSingleP) {
-			var kids = node.firstChild.children;
-			return (kids && 1 === kids.length &&
-					'br' === kids[0].nodeName.toLowerCase());
-		}
-		return false;
-	}
+    var defaultConfig = {
+        handlers: {
+            prepareTables: true,
+            cleanLists: true,
+            removeComments: true,
+            unwrapTags: true,
+            removeStyles: true,
+            removeNamespacedElements: true,
+            transformFormattings: true,
+            transformLinks: false
+        }
+    };
 
+    var handlers = (function() {
+        var config = {};
+        var init = function() {
+            if (Aloha.settings.contentHandler
+                && Aloha.settings.contentHandler.handler
+                && Aloha.settings.contentHandler.handler.generic) {
+                config = jQuery.extend({}, defaultConfig.handlers, Aloha.settings.contentHandler.handler.generic);
+            } else {
+                config = defaultConfig.handlers;
+            }
+        };
 
-	/**
-	 * Transforms all tables in the given content to make them ready to for
-	 * use with Aloha's table handling.
-	 *
-	 * Cleans tables of their unwanted attributes.
-	 * Normalizes table cells.
-	 *
-	 * @param {jQuery.<HTMLElement>} $content
-	 */
-	function prepareTables($content) {
-		// Because Aloha does not provide a way for the editor to
-		// manipulate borders, cellspacing, cellpadding in tables.
-		// @todo what about width, height?
-		$content.find('table')
-			.removeAttr('cellpadding')
-			.removeAttr('cellspacing')
-			.removeAttr('border')
-			.removeAttr('border-top')
-			.removeAttr('border-bottom')
-			.removeAttr('border-left')
-			.removeAttr('border-right');
+        return {
+            config: function() {
+                init();
+                return config;
+            }
+        };
+    })();
 
-		$content.find('td').each(function () {
-			var td = this;
-
-			// Because cells with a single empty <p> are rendered to appear
-			// like empty cells, it simplifies the handeling of cells to
-			// normalize these table cells to contain actual white space
-			// instead.
-			if (isProppedParagraph(td.innerHTML)) {
-				td.innerHTML = '&nbsp;';
-			}
-
-			// Because a single <p> wrapping the contents of a <td> is
-			// initially superfluous and should be stripped out.
-			var $p = $('>p', td);
-			if (1 === $p.length) {
-				$p.contents().unwrap();
-			}
-		});
-
-		// Because Aloha does not provide a means for editors to manipulate
-		// these properties.
-		$content.find('td,tr')
-			.removeAttr('width')
-			.removeAttr('height')
-			.removeAttr('valign');
-
-		// Because Aloha table handling simply does not regard colgroups.
-		// @TODO Use sanitize.js?
-		$content.find('colgroup').remove();
-	}
+    /**
+     * Checks whether the markup describes a paragraph that is propped by
+     * a <br> tag but is otherwise empty.
+     *
+     * Will return true for:
+     *
+     * <p id="foo"><br class="bar" /></p>
+     *
+     * as well as:
+     *
+     * <p><br></p>
+     *
+     * @param {string} html Markup
+     * @return {boolean} True if html describes a propped paragraph.
+     */
+    function isProppedParagraph(html) {
+        var trimmed = $.trim(html);
+        if (!trimmed) {
+            return false;
+        }
+        var node = $('<div>' + trimmed + '</div>')[0];
+        var containsSingleP = node.firstChild === node.lastChild
+            && 'p' === node.firstChild.nodeName.toLowerCase();
+        if (containsSingleP) {
+            var kids = node.firstChild.children;
+            return (kids && 1 === kids.length &&
+                'br' === kids[0].nodeName.toLowerCase());
+        }
+        return false;
+    }
 
 	var GenericContentHandler = Manager.createHandler({
 
@@ -145,31 +124,69 @@ define([
 				return $content.html();
 			}
 
-			prepareTables($content);
-
-			this.cleanLists($content);
-			this.removeComments($content);
-			this.unwrapTags($content);
-			this.removeStyles($content);
-			this.removeNamespacedElements($content);
-			//this.transformLinks($content);
-
-			var transformFormatting = true;
-
-			if (Aloha.settings.contentHandler
-				&& Aloha.settings.contentHandler.handler
-				&& Aloha.settings.contentHandler.handler.generic
-				&& typeof Aloha.settings.contentHandler.handler.generic.transformFormattings !== 'undefinded'
-				&& !Aloha.settings.contentHandler.handler.generic.transformFormattings ) {
-				transformFormatting = false;
-			}
-
-			if (transformFormatting) {
-			    this.transformFormattings($content);
-			}
+            // Run each configured handler.
+            var handler, config = handlers.config();
+            for (handler in config) {
+                if (config[handler]) {
+                    this[handler]($content);
+                }
+            }
 
 			return $content.html();
 		},
+
+        /**
+         * Transforms all tables in the given content to make them ready to for
+         * use with Aloha's table handling.
+         *
+         * Cleans tables of their unwanted attributes.
+         * Normalizes table cells.
+         *
+         * @param {jQuery.<HTMLElement>} $content
+         */
+        prepareTables: function($content) {
+            // Because Aloha does not provide a way for the editor to
+            // manipulate borders, cellspacing, cellpadding in tables.
+            // @todo what about width, height?
+            $content.find('table')
+                .removeAttr('cellpadding')
+                .removeAttr('cellspacing')
+                .removeAttr('border')
+                .removeAttr('border-top')
+                .removeAttr('border-bottom')
+                .removeAttr('border-left')
+                .removeAttr('border-right');
+
+            $content.find('td').each(function () {
+                var td = this;
+
+                // Because cells with a single empty <p> are rendered to appear
+                // like empty cells, it simplifies the handeling of cells to
+                // normalize these table cells to contain actual white space
+                // instead.
+                if (isProppedParagraph(td.innerHTML)) {
+                    td.innerHTML = '&nbsp;';
+                }
+
+                // Because a single <p> wrapping the contents of a <td> is
+                // initially superfluous and should be stripped out.
+                var $p = $('>p', td);
+                if (1 === $p.length) {
+                    $p.contents().unwrap();
+                }
+            });
+
+            // Because Aloha does not provide a means for editors to manipulate
+            // these properties.
+            $content.find('td,tr')
+                .removeAttr('width')
+                .removeAttr('height')
+                .removeAttr('valign');
+
+            // Because Aloha table handling simply does not regard colgroups.
+            // @TODO Use sanitize.js?
+            $content.find('colgroup').remove();
+        },
 
 		/**
 		 * Cleans lists.
@@ -236,6 +253,9 @@ define([
 			content.contents().each(function () {
 				if (this.nodeType === 8) {
 					$(this).remove();
+                } else if (this.nodeType == 3) {
+                    // In FF, comments appear as text nodes
+                    this.textContent = this.textContent.replace(/<!--[\s\S]*?-->/g, '');
 				} else {
 					// do recursion
 					that.removeComments($(this));
